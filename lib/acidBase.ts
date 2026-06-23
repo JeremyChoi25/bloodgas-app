@@ -351,4 +351,3 @@ export function interpretBloodGas(input: BloodGasInput): AcidBaseResult {
 
   return { phStatus, primaryDisorder, compensation, anionGap, deltaDelta, differentials, caveat, summary };
 }
-EOF

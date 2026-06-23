@@ -309,6 +309,10 @@ export default function Home() {
           <p className="disclaimer">Decision support only — confirm against clinical context.</p>
         </section>
       )}
+      
+      <footer className="footer">
+        © 2026 Jeremy Choi
+      </footer>
 
       <style jsx>{`
         .page {
@@ -601,6 +605,13 @@ export default function Home() {
           font-size: 11px;
           color: #5e6b64;
           text-align: center;
+        }
+        .footer {
+          margin-top: auto;
+          padding-top: 24px;
+          text-align: center;
+          font-size: 12px;
+          color: var(--ink-soft);
         }
         @media (max-width: 420px) {
           .fieldGrid {

@@ -189,4 +189,3 @@ export default function Home() {
     </main>
   );
 }
-EOF

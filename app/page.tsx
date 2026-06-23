@@ -23,6 +23,9 @@ export default function Home() {
   const [HCO3, setHCO3] = useState("");
   const [Na, setNa] = useState("");
   const [Cl, setCl] = useState("");
+  const [K, setK] = useState("");
+  const [lactate, setLactate] = useState("");
+  const [glucose, setGlucose] = useState("");
   const [duration, setDuration] = useState<AcuteChronic>("acute");
 
   const [interpretation, setInterpretation] = useState<AcidBaseResult | null>(null);
@@ -58,6 +61,9 @@ export default function Home() {
             setHCO3(parsed.HCO3 != null ? String(parsed.HCO3) : "");
             setNa(parsed.Na != null ? String(parsed.Na) : "");
             setCl(parsed.Cl != null ? String(parsed.Cl) : "");
+            setK(parsed.K != null ? String(parsed.K) : "");
+            setLactate(parsed.lactate != null ? String(parsed.lactate) : "");
+            setGlucose(parsed.glucose != null ? String(parsed.glucose) : "");
           }
         }
       } catch (err: any) {
@@ -83,6 +89,9 @@ export default function Home() {
       HCO3: parsedHCO3,
       Na: Na ? parseFloat(Na) : undefined,
       Cl: Cl ? parseFloat(Cl) : undefined,
+      K: K ? parseFloat(K) : undefined,
+      lactate: lactate ? parseFloat(lactate) : undefined,
+      glucose: glucose ? parseFloat(glucose) : undefined,
       respiratoryDuration: duration,
     });
     setInterpretation(result);
@@ -114,8 +123,11 @@ export default function Home() {
           </select>
         </label>
         <label>HCO3 <input value={HCO3} onChange={(e) => setHCO3(e.target.value)} /></label>
-        <label>Na (optional, for anion gap) <input value={Na} onChange={(e) => setNa(e.target.value)} /></label>
-        <label>Cl (optional, for anion gap) <input value={Cl} onChange={(e) => setCl(e.target.value)} /></label>
+        <label>Na (for anion gap) <input value={Na} onChange={(e) => setNa(e.target.value)} /></label>
+        <label>Cl (for anion gap) <input value={Cl} onChange={(e) => setCl(e.target.value)} /></label>
+        <label>K (optional, refines differentials) <input value={K} onChange={(e) => setK(e.target.value)} /></label>
+        <label>Lactate (optional) <input value={lactate} onChange={(e) => setLactate(e.target.value)} /></label>
+        <label>Glucose (optional) <input value={glucose} onChange={(e) => setGlucose(e.target.value)} /></label>
         <label>
           If respiratory disorder: duration
           <select value={duration} onChange={(e) => setDuration(e.target.value as AcuteChronic)}>
@@ -145,11 +157,36 @@ export default function Home() {
           {interpretation.anionGap && (
             <p><strong>Anion gap:</strong> {interpretation.anionGap.value} ({interpretation.anionGap.category})</p>
           )}
+          {interpretation.deltaDelta && (
+            <div style={{ marginTop: 8 }}>
+              <p><strong>Delta-delta ratio:</strong> {interpretation.deltaDelta.ratio}</p>
+              <p style={{ fontSize: 13, color: "#555" }}>{interpretation.deltaDelta.interpretation}</p>
+            </div>
+          )}
           {interpretation.caveat && (
             <p style={{ color: "#a66800", fontSize: 13 }}>⚠️ {interpretation.caveat}</p>
+          )}
+          {interpretation.differentials.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <strong>Differential diagnoses:</strong>
+              {interpretation.differentials.map((group, i) => (
+                <div key={i} style={{ marginTop: 10 }}>
+                  <p style={{ marginBottom: 4 }}>{group.title}</p>
+                  <ul style={{ marginTop: 0, fontSize: 14 }}>
+                    {group.items.map((item, j) => (
+                      <li key={j}>{item}</li>
+                    ))}
+                  </ul>
+                  {group.note && (
+                    <p style={{ fontSize: 13, color: "#1a6e1a" }}>💡 {group.note}</p>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
     </main>
   );
 }
+EOF

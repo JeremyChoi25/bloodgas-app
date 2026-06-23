@@ -8,6 +8,9 @@ export interface BloodGasInput {
   HCO3: number;
   Na?: number;
   Cl?: number;
+  K?: number;
+  lactate?: number;
+  glucose?: number;
   respiratoryDuration?: AcuteChronic;
 }
 
@@ -30,17 +33,145 @@ export interface AnionGapResult {
   category: "high" | "normal" | "low";
 }
 
+export interface DeltaDeltaResult {
+  ratio: number;
+  deltaAG: number;
+  deltaHCO3: number;
+  interpretation: string;
+}
+
+export interface DifferentialGroup {
+  title: string;
+  items: string[];
+  note?: string;
+}
+
 export interface AcidBaseResult {
   phStatus: "acidemia" | "alkalemia" | "normal pH";
   primaryDisorder: string;
   compensation: CompensationCheck;
   anionGap?: AnionGapResult;
+  deltaDelta?: DeltaDeltaResult;
+  differentials: DifferentialGroup[];
   caveat?: string;
   summary: string;
 }
 
 const toMmHg = (value: number, unit: Unit) =>
   unit === "kPa" ? value * 7.50062 : value;
+
+function getDifferentials(
+  primaryDisorder: string,
+  anionGap: AnionGapResult | undefined,
+  duration: AcuteChronic,
+  input: BloodGasInput
+): DifferentialGroup[] {
+  const groups: DifferentialGroup[] = [];
+
+  if (primaryDisorder.includes("respiratory acidosis")) {
+    groups.push({
+      title: `Respiratory acidosis (${duration})`,
+      items:
+        duration === "acute"
+          ? [
+              "Opioid or sedative overdose",
+              "Acute severe asthma or COPD exacerbation",
+              "Airway obstruction",
+              "Neuromuscular failure (Guillain-Barré, myasthenic crisis)",
+              "Chest wall trauma / flail chest",
+              "Iatrogenic under-ventilation",
+            ]
+          : [
+              "COPD",
+              "Obesity hypoventilation syndrome",
+              "Chronic neuromuscular disease (e.g. ALS, muscular dystrophy)",
+              "Severe kyphoscoliosis",
+              "Central sleep apnea",
+            ],
+    });
+  }
+
+  if (primaryDisorder.includes("respiratory alkalosis")) {
+    groups.push({
+      title: `Respiratory alkalosis (${duration})`,
+      items:
+        duration === "acute"
+          ? [
+              "Anxiety / pain / hyperventilation",
+              "Pulmonary embolism",
+              "Early sepsis",
+              "Hypoxemia-driven hyperventilation",
+              "Salicylate toxicity (early phase)",
+              "CNS lesion or stroke",
+            ]
+          : [
+              "Chronic liver disease",
+              "Pregnancy",
+              "Chronic high altitude exposure",
+              "Chronic hypoxemia",
+              "CNS tumor",
+            ],
+    });
+  }
+
+  if (primaryDisorder.includes("metabolic acidosis")) {
+    if (anionGap?.category === "high") {
+      const items = [
+        "Lactic acidosis (sepsis, shock, tissue ischemia, metformin)",
+        "Diabetic ketoacidosis",
+        "Alcoholic ketoacidosis / starvation ketosis",
+        "Toxic alcohol ingestion (methanol, ethylene glycol)",
+        "Salicylate toxicity",
+        "Uremia (renal failure)",
+        "Iron or isoniazid overdose",
+      ];
+      let note: string | undefined;
+      if (input.lactate !== undefined && input.lactate > 2) {
+        note = "Elevated lactate raises suspicion for lactic acidosis (sepsis/shock/ischemia) as the leading cause.";
+      } else if (input.glucose !== undefined && input.glucose > 250) {
+        note = "Elevated glucose raises suspicion for diabetic ketoacidosis — correlate with ketones if available.";
+      }
+      groups.push({ title: "High anion gap metabolic acidosis", items, note });
+    } else if (anionGap?.category === "normal") {
+      const items = [
+        "GI bicarbonate loss (diarrhea, ileostomy, fistula)",
+        "Renal tubular acidosis (types 1, 2, 4)",
+        "Early/mild renal failure",
+        "Carbonic anhydrase inhibitor use (e.g. acetazolamide)",
+        "Dilutional acidosis (large volume saline)",
+        "Ureteral diversion",
+      ];
+      let note: string | undefined;
+      if (input.K !== undefined) {
+        note =
+          input.K < 3.5
+            ? "Low potassium favors diarrhea, RTA type 1 (distal), or RTA type 2 (proximal)."
+            : input.K > 5.0
+            ? "High potassium favors RTA type 4 (hyperkalemic distal RTA) or early renal failure."
+            : undefined;
+      }
+      groups.push({ title: "Normal anion gap metabolic acidosis", items, note });
+    } else if (anionGap?.category === "low") {
+      groups.push({
+        title: "Low anion gap metabolic acidosis",
+        items: ["Hypoalbuminemia", "Multiple myeloma / paraproteinemia", "Lithium toxicity", "Severe hyponatremia"],
+      });
+    }
+  }
+
+  if (primaryDisorder.includes("metabolic alkalosis")) {
+    groups.push({
+      title: "Metabolic alkalosis",
+      items: [
+        "Chloride-responsive: vomiting / NG suction, diuretic use, post-hypercapnia, contraction alkalosis",
+        "Chloride-resistant: primary/secondary hyperaldosteronism, Cushing's syndrome, Bartter/Gitelman syndrome, severe hypokalemia, exogenous alkali administration, licorice ingestion",
+      ],
+      note: "Distinguishing chloride-responsive vs. resistant causes requires a urine chloride, which this tool doesn't currently capture.",
+    });
+  }
+
+  return groups;
+}
 
 export function interpretBloodGas(input: BloodGasInput): AcidBaseResult {
   const pCO2 = toMmHg(input.pCO2, input.pCO2Unit);
@@ -186,9 +317,38 @@ export function interpretBloodGas(input: BloodGasInput): AcidBaseResult {
     anionGap = { value: Math.round(ag * 10) / 10, category };
   }
 
+  let deltaDelta: DeltaDeltaResult | undefined;
+  if (
+    anionGap?.category === "high" &&
+    primaryDisorder.includes("metabolic acidosis") &&
+    HCO3 < 24
+  ) {
+    const deltaAG = anionGap.value - 12;
+    const deltaHCO3 = 24 - HCO3;
+    const ratio = Math.round((deltaAG / deltaHCO3) * 100) / 100;
+    let interpretation: string;
+    if (ratio < 0.4) {
+      interpretation =
+        "Ratio < 0.4: a normal-anion-gap (hyperchloremic) process appears to predominate — consider concurrent GI bicarbonate loss or RTA alongside the high-AG process.";
+    } else if (ratio < 1) {
+      interpretation =
+        "Ratio 0.4–1.0: suggests a combined high-anion-gap and normal-anion-gap metabolic acidosis.";
+    } else if (ratio <= 2) {
+      interpretation =
+        "Ratio 1.0–2.0: consistent with a pure high-anion-gap metabolic acidosis, well explained by the anion gap alone.";
+    } else {
+      interpretation =
+        "Ratio > 2.0: HCO3 is higher than the anion gap alone predicts — suggests a concurrent metabolic alkalosis, or a pre-existing elevated baseline HCO3 from compensated chronic respiratory acidosis.";
+    }
+    deltaDelta = { ratio, deltaAG, deltaHCO3, interpretation };
+  }
+
+  const differentials = getDifferentials(primaryDisorder, anionGap, duration, input);
+
   const summary = `${phStatus}, primary process: ${primaryDisorder}.${
     compensation.verdict !== "not assessed" ? ` ${compensation.verdict}.` : ""
   }${anionGap ? ` Anion gap ${anionGap.value} (${anionGap.category}).` : ""}`;
 
-  return { phStatus, primaryDisorder, compensation, anionGap, caveat, summary };
+  return { phStatus, primaryDisorder, compensation, anionGap, deltaDelta, differentials, caveat, summary };
 }
+EOF
